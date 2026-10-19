@@ -1,7 +1,8 @@
+section .text
+
 extern malloc
 extern __errno_location
 
-section .text
 global ft_calloc
 
 ft_calloc:
