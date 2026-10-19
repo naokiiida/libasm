@@ -9,7 +9,7 @@ ft_strcmp:
 	mov dl, [rsi + rcx]
 	cmp al, dl
 	jne .done
-	test al, dl
+	test al, al
 	je .done
 	inc rcx
 	jmp .loop
@@ -19,3 +19,5 @@ ft_strcmp:
 	movzx edx, dl
 	sub eax, edx
 	ret
+
+section .note.GNU-stack noalloc noexec nowrite progbits

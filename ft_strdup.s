@@ -19,9 +19,9 @@ ft_strdup:
 	jz .done
 	mov rdi, rax
 	;rsi is arg1 for strcpy
-	call ft_strcpy
-	; je .done	;not needed because .done is next instruction anyway
-	; could have also gone with jmp ft_strcpy for tail call optimization
+	jmp ft_strcpy ;tail call optimization instead of `call ft_strcpy` and `.done: ret`
 
 .done:
 	ret
+
+section .note.GNU-stack noalloc noexec nowrite progbits

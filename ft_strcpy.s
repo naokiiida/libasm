@@ -32,3 +32,4 @@ ft_strcpy:
 ;         mov rax, rdi
 ;         ret
 
+section .note.GNU-stack noalloc noexec nowrite progbits

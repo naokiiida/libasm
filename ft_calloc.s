@@ -36,3 +36,5 @@ ft_calloc:
 	mov dword[rax], 12 ;errno = ENOMEM (12)
 	xor eax, eax
 	ret
+
+section .note.GNU-stack noalloc noexec nowrite progbits
