@@ -41,6 +41,6 @@ fclean: clean
 re: fclean all
 
 dev:
-	nix develop
+	nix develop .#devShells.x86_64-linux.default
 
 .PHONY: all bonus test clean fclean re dev
