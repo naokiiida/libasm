@@ -27,6 +27,21 @@ Callee-Saved (Must Save): rbx, rbp, r12, r13, r14, r15, rsp        (must restore
 > - Writing to a **32-bit** register (`xor eax, eax` or `mov eax, 1`) **automatically zeroes the upper 32 bits** of the 64-bit register (`rax`).
 > - Writing to an **8-bit (`al`)** or **16-bit (`ax`)** register **leaves the upper bits untouched (garbage remains!)**. Use `movzx eax, al` to zero-extend 8 bits into 32/64 bits.
 
+### Memory Addressing & Dereferencing (`[...]`)
+| Assembly Syntax | C Equivalent | Meaning |
+| :--- | :--- | :--- |
+| `rax` | `rax` | Value in register (e.g. pointer address `0x7ffff...`) |
+| `[rax]` | `*rax` | **Dereference**: access the memory located at address `rax` |
+| `[rdi + rcx]` | `*(rdi + rcx)` or `rdi[rcx]` | Access memory at base `rdi` offset by `rcx` |
+| `mov [rax], edi` | `*(int *)rax = edi;` | Write 32-bit integer `edi` into memory pointed to by `rax` |
+| `mov dl, [rsi + rcx]` | `dl = src[rcx];` | Read 1 byte from address `rsi + rcx` into 8-bit `dl` |
+
+> [!NOTE]
+> **Address Size vs. Data Size (`mov al, [rdi + rcx]`):**
+> - **Address Size (`[rdi + rcx]`):** Specifies **WHERE** to look in memory. In 64-bit mode, memory addresses are 64 bits wide, so base and index registers must be 64-bit (`rdi`, `rcx`).
+> - **Data Size (`al`):** Specifies **WHAT** to fetch. In C, `sizeof(char) == 1` byte (8 bits), so we fetch into the 8-bit register `al`.
+> - This is **NOT** an operand size mismatch! Address calculation and data transfer size are completely separate. (Analogy: The 64-bit GPS coordinates of a house vs. the 1-byte letter inside the mailbox). Some simplistic IDE linters falsely flag this because they don't distinguish memory address pointers from data registers.
+
 ### CPU Flags (`eflags`) & Jumps Used in `libasm`
 | Flag | Name | Set When... | Conditional Jumps |
 | :--- | :--- | :--- | :--- |
@@ -142,9 +157,10 @@ Try rewriting each `.s` file using only the **Mental Recipe** column first, then
 | :--- | :--- |
 | **"Why can't you do `mov [rdi], [rsi]` or `cmp [rdi], [rsi]`?"** | x86-64 machine instructions only have a single `ModR/M` memory-addressing field, so at most **one** operand can be a memory location (`[...]`). Moving data from RAM to RAM must go through a CPU register (`mov dl, [rsi]` $\rightarrow$ `mov [rdi], dl`). |
 | **"Why do you need `movzx` in `ft_strcmp`? Why not `sub al, dl`?"** | `man 3 strcmp` requires comparing bytes as **`unsigned char` (`0..255`)** and returning a **32-bit signed `int` (`eax`)**. If we compare `0x01` (`1`) and `0xFF` (`255`), 8-bit `sub al, dl` wraps around to `0x02` (`+2`, wrong sign!). Zero-extending both to 32 bits first (`movzx eax, al` and `movzx edx, dl`) computes `1 - 255 = -254` in 32-bit signed `eax`. |
+| **"Why do you load into 1-byte `al` (`mov al, [rdi + rcx]`) instead of 64-bit `rax`? Isn't mixing 8-bit `al` with 64-bit `rdi` an operand size mismatch?"** | Address size and data size are completely independent. `[rdi + rcx]` uses 64-bit registers because pointers in 64-bit mode are 8 bytes wide (where in RAM to look). `al` is an 8-bit register because a C `char` is exactly 1 byte (what data to fetch). We compare 1 byte at a time because reading 8 bytes with `rax` would read past the null terminator `\0`, compare uninitialized garbage memory, and risk a `SIGSEGV` (buffer over-read) if the string ends near a memory page boundary. |
 | **"Why must `rsp` be 16-byte aligned before `call`?"** | The System V AMD64 ABI requires `rsp % 16 == 0` right before any `call` instruction because `glibc` functions use 16-byte SSE instructions (`movaps`) on the stack that segfault if unaligned. When our function is entered, `call` pushed an 8-byte return address onto the stack (`rsp % 16 == 8`). Doing one `push` (`rsp -= 8`) before an inner `call` aligns `rsp` back to a multiple of 16 (`rsp % 16 == 0`). |
 | **"Why do you call `__errno_location` instead of accessing a global `errno`?"** | In modern multi-threaded C (`pthread`), each thread has its own private `errno` in Thread-Local Storage so threads don't overwrite each other's error codes. `__errno_location()` returns the `int *` pointer to the calling thread's `errno`. |
-| **"Why `mov [rax], edi` (or `dword`) when setting `errno`?"** | `__errno_location()` returns `int *` in `rax`. On 64-bit Linux, a C `int` is **32 bits (4 bytes = `dword`)**, not 64 bits (`qword`). Writing 64-bit `rdi` would overwrite 4 bytes of adjacent memory past `errno`! |
+| **"What do the brackets in `mov [rax], edi` mean, and why `edi`?"** | Brackets `[...]` perform **memory dereferencing** (identical to `*rax` in C). `__errno_location()` returns an `int *` memory address in `rax`, so `mov [rax], edi` executes `*(int *)rax = edi;` (writing into the variable in memory). We use 32-bit `edi` (not 64-bit `rdi`) because `errno` is a 4-byte `int`; writing 64 bits would corrupt 4 bytes of adjacent memory. |
 | **"What does `wrt ..plt` mean?"** | **"With Reference To Procedure Linkage Table."** External functions like `malloc` and `__errno_location` live in the shared C library (`libc.so.6`), whose address is randomized at runtime (ASLR). `wrt ..plt` tells NASM to emit a `PLT32` relocation so the call jumps through the executable's PLT trampoline stub. |
 | **"How does `mul rsi` detect overflow in `ft_calloc`?"** | `mul rsi` multiplies unsigned 64-bit `rax * rsi` into a **128-bit** result across `rdx:rax` (high 64 bits in `rdx`, low 64 bits in `rax`). If the product exceeds 64 bits (`size_t` max), `rdx` is non-zero and the CPU sets the Carry Flag (`CF = 1`), which we catch with `jc .overflow`. |
 | **"What does `ar rcs libasm.a` in the Makefile do?"** | `ar` creates a static library archive (`.a`) from `.o` object files: `r` replaces/inserts object files, `c` creates the archive if it doesn't exist, and `s` writes the symbol table index (same as `ranlib`). |
